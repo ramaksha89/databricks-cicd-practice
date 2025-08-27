@@ -1,16 +1,17 @@
-name: Databricks CI/CD #dummy comment
+name: Databricks CI/CD
 
 on:
-  pull_request:
-    branches: [ "main" ]
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: {}   # lets you run it manually from Actions tab
 
 jobs:
   deploy-notebooks:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -18,35 +19,49 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Databricks CLI
+      - name: Install Databricks CLI (legacy v0.x)
         run: pip install databricks-cli
 
       - name: Configure Databricks CLI
+        shell: bash
         run: |
+          set -eu
           mkdir -p ~/.databricks
-          {
-            echo "[DEFAULT]"
-            echo "host = ${{ secrets.DATABRICKS_HOST }}"
-            echo "token = ${{ secrets.DATABRICKS_TOKEN }}"
-          } > ~/.databricks/config
+          cat > ~/.databricks/config <<EOF
+          [DEFAULT]
+          host = ${{ secrets.DATABRICKS_HOST }}
+          token = ${{ secrets.DATABRICKS_TOKEN }}
+          EOF
+          # quick sanity check (no token printed)
+          ls -la ~/.databricks
+          head -n1 ~/.databricks/config
 
-          - name: Deploy notebook(s)
-          run: |
-            python - <<'PY'
-            import json, os, subprocess, sys
-            spec = json.load(open("deployment.json"))
-            ext2lang = {'.py':'PYTHON','.scala':'SCALA','.sql':'SQL','.r':'R'}
-            for n in spec.get("notebooks", []):
-                local = n["path"]
-                target = n["target"]
-                ext = os.path.splitext(local)[1].lower()
-                lang = ext2lang.get(ext, 'PYTHON')
-                cmd = [
-                    "databricks","workspace","import",
-                    "--language", lang, "--format","SOURCE",
-                    local, target, "--overwrite"
-                ]
-                print("Running:", " ".join(cmd))
-                subprocess.check_call(cmd)
-            PY
-  
+      - name: Sanity check CLI
+        run: |
+          databricks --version || true
+          databricks workspace ls /Shared || true
+
+      - name: Ensure target workspace folder exists
+        run: databricks workspace mkdirs /Shared/cicd-practice || true
+
+      - name: Deploy notebook(s)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          with open("deployment.json") as f:
+              spec = json.load(f)
+          # map file extension to Databricks language flag
+          ext2lang = {'.py':'PYTHON', '.scala':'SCALA', '.sql':'SQL', '.r':'R'}
+          for item in spec.get("notebooks", []):
+              local = item["path"]
+              target = item["target"]
+              lang = ext2lang.get(os.path.splitext(local)[1].lower(), 'PYTHON')
+              cmd = [
+                  "databricks","workspace","import",
+                  "--language", lang, "--format","SOURCE",
+                  local, target, "--overwrite"
+              ]
+              print("Running:", " ".join(cmd), flush=True)
+              subprocess.check_call(cmd)
+          PY
