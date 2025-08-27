@@ -5,7 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch: {}   # lets you run it manually from Actions tab
+  workflow_dispatch: {}   # allow manual runs from Actions tab
 
 jobs:
   deploy-notebooks:
@@ -22,36 +22,43 @@ jobs:
       - name: Install Databricks CLI (legacy v0.x)
         run: pip install databricks-cli
 
+      # Configure the LEGACY CLI (expects ~/.databrickscfg)
       - name: Configure Databricks CLI
         shell: bash
         run: |
           set -eu
-          mkdir -p ~/.databricks
-          cat > ~/.databricks/config <<EOF
+          cat > ~/.databrickscfg <<EOF
           [DEFAULT]
           host = ${{ secrets.DATABRICKS_HOST }}
           token = ${{ secrets.DATABRICKS_TOKEN }}
           EOF
-          # quick sanity check (no token printed)
-          ls -la ~/.databricks
-          head -n1 ~/.databricks/config
+          echo "Wrote ~/.databrickscfg"
+          head -n1 ~/.databrickscfg   # prints only the [DEFAULT] line (no secrets)
 
       - name: Sanity check CLI
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
           databricks --version || true
           databricks workspace ls /Shared || true
 
       - name: Ensure target workspace folder exists
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: databricks workspace mkdirs /Shared/cicd-practice || true
 
       - name: Deploy notebook(s)
         shell: bash
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
           python - <<'PY'
           import json, os, subprocess
           with open("deployment.json") as f:
               spec = json.load(f)
-          # map file extension to Databricks language flag
           ext2lang = {'.py':'PYTHON', '.scala':'SCALA', '.sql':'SQL', '.r':'R'}
           for item in spec.get("notebooks", []):
               local = item["path"]
