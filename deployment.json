@@ -1,0 +1,9 @@
+{
+    "notebooks": [
+      {
+        "path": "notebooks/example_notebook.py",
+        "target": "/Shared/cicd-practice/example_notebook"
+      }
+    ]
+  }
+  
