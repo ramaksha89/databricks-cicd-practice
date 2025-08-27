@@ -30,14 +30,23 @@ jobs:
             echo "token = ${{ secrets.DATABRICKS_TOKEN }}"
           } > ~/.databricks/config
 
-      - name: Deploy notebook(s)
-        run: |
-          python - <<'PY'
-          import json, subprocess
-          spec = json.load(open("deployment.json"))
-          for n in spec.get("notebooks", []):
-              local, target = n["path"], n["target"]
-              cmd = ["databricks","workspace","import",local,target,"--overwrite"]
-              print("Running:", " ".join(cmd))
-              subprocess.check_call(cmd)
-          PY
+          - name: Deploy notebook(s)
+          run: |
+            python - <<'PY'
+            import json, os, subprocess, sys
+            spec = json.load(open("deployment.json"))
+            ext2lang = {'.py':'PYTHON','.scala':'SCALA','.sql':'SQL','.r':'R'}
+            for n in spec.get("notebooks", []):
+                local = n["path"]
+                target = n["target"]
+                ext = os.path.splitext(local)[1].lower()
+                lang = ext2lang.get(ext, 'PYTHON')
+                cmd = [
+                    "databricks","workspace","import",
+                    "--language", lang, "--format","SOURCE",
+                    local, target, "--overwrite"
+                ]
+                print("Running:", " ".join(cmd))
+                subprocess.check_call(cmd)
+            PY
+  
