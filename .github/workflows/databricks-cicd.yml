@@ -1,0 +1,43 @@
+name: Databricks CI/CD
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy-notebooks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Databricks CLI
+        run: pip install databricks-cli
+
+      - name: Configure Databricks CLI
+        run: |
+          mkdir -p ~/.databricks
+          {
+            echo "[DEFAULT]"
+            echo "host = ${{ secrets.DATABRICKS_HOST }}"
+            echo "token = ${{ secrets.DATABRICKS_TOKEN }}"
+          } > ~/.databricks/config
+
+      - name: Deploy notebook(s)
+        run: |
+          python - <<'PY'
+          import json, subprocess
+          spec = json.load(open("deployment.json"))
+          for n in spec.get("notebooks", []):
+              local, target = n["path"], n["target"]
+              cmd = ["databricks","workspace","import",local,target,"--overwrite"]
+              print("Running:", " ".join(cmd))
+              subprocess.check_call(cmd)
+          PY
